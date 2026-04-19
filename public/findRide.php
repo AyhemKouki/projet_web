@@ -8,16 +8,96 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Get user info
+$user_id = $_SESSION['user_id'];
+$success = "";
+$error   = "";
+
+// ─── RÉSERVATION (POST) ───────────────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_ride_id'])) {
+
+    $ride_id = (int) $_POST['book_ride_id'];
+
+    // Vérifier que le ride existe et a des places
+    $stmt = $pdo->prepare("SELECT r.*, u.name AS driver_name FROM rides r JOIN users u ON u.id = r.driver_id WHERE r.id = ?");
+    $stmt->execute([$ride_id]);
+    $ride = $stmt->fetch();
+
+    if (!$ride) {
+        $error = "Ce trajet n'existe pas.";
+
+    } elseif ($ride['driver_id'] == $user_id) {
+        $error = "Vous ne pouvez pas réserver votre propre trajet.";
+
+    } elseif ($ride['seats'] <= 0) {
+        $error = "Plus de places disponibles.";
+
+    } else {
+        // Vérifier si déjà réservé
+        $stmt = $pdo->prepare("SELECT id FROM bookings WHERE user_id = ? AND ride_id = ?");
+        $stmt->execute([$user_id, $ride_id]);
+
+        if ($stmt->rowCount() > 0) {
+            $error = "Vous avez déjà réservé ce trajet.";
+        } else {
+            // Insérer la réservation
+            $stmt = $pdo->prepare("INSERT INTO bookings (user_id, ride_id) VALUES (?, ?)");
+            $stmt->execute([$user_id, $ride_id]);
+
+            // Décrémenter le nombre de places
+            $pdo->prepare("UPDATE rides SET seats = seats - 1 WHERE id = ?")->execute([$ride_id]);
+
+            $success = "Réservation confirmée pour le trajet " . htmlspecialchars($ride['departure']) . " → " . htmlspecialchars($ride['destination']) . " !";
+        }
+    }
+}
+
+// ─── RECHERCHE (GET) ──────────────────────────────────────────────────────────
+$rides       = [];
+$searched    = false;
+$from        = trim($_GET['from']  ?? '');
+$to          = trim($_GET['to']    ?? '');
+$date        = trim($_GET['date']  ?? '');
+
+if ($from !== '' || $to !== '' || $date !== '') {
+    $searched = true;
+
+    $sql = "
+        SELECT r.*, u.name AS driver_name
+        FROM rides r
+        JOIN users u ON u.id = r.driver_id
+        WHERE 1=1
+    ";
+    $params = [];
+
+    if ($from !== '') {
+        $sql .= " AND r.departure LIKE ?";
+        $params[] = "%$from%";
+    }
+    if ($to !== '') {
+        $sql .= " AND r.destination LIKE ?";
+        $params[] = "%$to%";
+    }
+    if ($date !== '') {
+        $sql .= " AND r.date = ?";
+        $params[] = $date;
+    }
+
+    $sql .= " AND r.seats > 0 ORDER BY r.date ASC";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rides = $stmt->fetchAll();
+}
+
+// ─── INFO UTILISATEUR ─────────────────────────────────────────────────────────
 $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt->execute([$user_id]);
 $user = $stmt->fetch();
 ?>
-
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Wayshare - find ride</title>
+    <title>Wayshare - Find ride</title>
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 
@@ -32,28 +112,25 @@ $user = $stmt->fetch();
         <a href="logout.php" class="btn-logout">Logout</a>
     </div>
   </nav>
-  <!-- ── MAIN LAYOUT: sidebar + content ── -->
+
   <div class="app-layout">
 
-    <!-- ═══ LEFT SIDEBAR (Driver) ═══ -->
+    <!-- ═══ SIDEBAR ═══ -->
     <aside class="driver-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-avatar">
             <?= strtoupper(substr($user['name'], 0, 2)) ?>
         </div>
         <div>
-          <div class="sidebar-name">
-            <?= $user['name'] ?>
-          </div>
+          <div class="sidebar-name"><?= htmlspecialchars($user['name']) ?></div>
           <div class="sidebar-role">Driver &amp; Passenger</div>
         </div>
       </div>
 
-      <div class="sidebar-section-label"> Panel</div>
-      <nav class="sidebar-nav">
+      <div class="sidebar-section-label">Panel</div>
+      <nav class="sidebar-nav"> 
         <div class="auth-footer">
-            <a class="snav-item " href="findRide.php">
-
+            <a class="snav-item active" href="findRide.php">
             <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             Find a ride
             </a>
@@ -74,7 +151,6 @@ $user = $stmt->fetch();
             <a class="snav-item" onclick="showPanel('panel-bookings')">
             <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
             View bookings
-            <span class="badge">3</span>
             </a>
         </div>
         <div class="auth-footer">
@@ -86,103 +162,135 @@ $user = $stmt->fetch();
       </nav>
     </aside>
 
-    <!-- ═══ RIGHT CONTENT PANELS ═══ -->
+    <!-- ═══ CONTENT ═══ -->
     <main class="panel-area">
-
-      <!-- PANEL 1: Find a ride (search) -->
       <div id="panel-search" class="panel active">
+
+        <!-- Messages -->
+        <?php if ($success): ?>
+          <div style="background:#e8f7f7;border:1.5px solid var(--teal);border-radius:10px;padding:14px 18px;margin-bottom:20px;color:#1a5050;display:flex;align-items:center;gap:10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" stroke="#1a9fa0" stroke-width="2" fill="none"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <?= htmlspecialchars($success) ?>
+          </div>
+        <?php endif; ?>
+        <?php if ($error): ?>
+          <div style="background:#fff0f0;border:1.5px solid #e05c5c;border-radius:10px;padding:14px 18px;margin-bottom:20px;color:#a83232;display:flex;align-items:center;gap:10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" stroke="#e05c5c" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <?= htmlspecialchars($error) ?>
+          </div>
+        <?php endif; ?>
+
+        <!-- Barre de recherche -->
         <div class="search-hero">
           <h1>Find your next ride</h1>
-          <div class="search-bar">
-            <div class="sb-field">
-              <label>
-                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                From
-              </label>
-              <input type="text" placeholder="City of departure">
+          <form method="GET" action="findRide.php">
+            <div class="search-bar">
+              <div class="sb-field">
+                <label>
+                  <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  From
+                </label>
+                <input type="text" name="from" placeholder="City of departure" value="<?= htmlspecialchars($from) ?>">
+              </div>
+              <div class="sb-field">
+                <label>
+                  <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  To
+                </label>
+                <input type="text" name="to" placeholder="Destination" value="<?= htmlspecialchars($to) ?>">
+              </div>
+              <div class="sb-field">
+                <label>
+                  <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  Date
+                </label>
+                <input type="date" name="date" value="<?= htmlspecialchars($date) ?>">
+              </div>
+              <button type="submit" class="sb-btn">
+                <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                Search
+              </button>
             </div>
-            <div class="sb-field">
-              <label>
-                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                To
-              </label>
-              <input type="text" placeholder="Destination">
-            </div>
-            <div class="sb-field">
-              <label>
-                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                Date
-              </label>
-              <input type="date">
-            </div>
-            <button class="sb-btn">
-              <svg viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              Search
-            </button>
-          </div>
+          </form>
         </div>
+
+        <!-- Résultats -->
+        <?php if ($searched): ?>
         <div class="results">
-          <div class="results-count">3 rides found</div>
+          <div class="results-count"><?= count($rides) ?> ride<?= count($rides) !== 1 ? 's' : '' ?> found</div>
+
+          <?php if (empty($rides)): ?>
+            <div style="text-align:center;padding:60px 20px;color:var(--text-light);">
+              <svg width="48" height="48" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" fill="none" style="margin-bottom:12px;opacity:0.4"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+              <p>Aucun trajet trouvé pour ces critères.<br>Essayez d'autres dates ou villes.</p>
+            </div>
+          <?php else: ?>
           <div class="rides-grid">
-            <div class="ride-card" style="animation-delay:0.05s">
+            <?php foreach ($rides as $i => $ride):
+              // Initiales du conducteur
+              $initials = strtoupper(substr($ride['driver_name'], 0, 2));
+              // Couleur avatar déterministe
+              $colors   = ['#7c6fcd','#1a9fa0','#e07a5f','#3d405b','#81b29a'];
+              $color    = $colors[crc32($ride['driver_name']) % count($colors)];
+              $delay    = 0.05 * ($i + 1);
+              // Vérifier si déjà réservé par cet utilisateur
+              $stmtChk = $pdo->prepare("SELECT id FROM bookings WHERE user_id = ? AND ride_id = ?");
+              $stmtChk->execute([$user_id, $ride['id']]);
+              $alreadyBooked = $stmtChk->rowCount() > 0;
+              $isOwner       = $ride['driver_id'] == $user_id;
+            ?>
+            <div class="ride-card" style="animation-delay:<?= $delay ?>s">
               <div class="ride-header">
-                <div class="ride-date"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Sun, Apr 19 · 7:00 AM</div>
-                <div class="ride-price"><strong>$18</strong><small>per seat</small></div>
+                <div class="ride-date">
+                  <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <?= htmlspecialchars($ride['date']) ?>
+                </div>
+                <?php if (!empty($ride['price'])): ?>
+                <div class="ride-price"><strong>$<?= htmlspecialchars($ride['price']) ?></strong><small>per seat</small></div>
+                <?php endif; ?>
               </div>
+
               <div class="ride-route">
                 <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                <span>Berkeley, CA</span><span style="color:var(--text-light)">→</span><span class="arr">Sacramento, CA</span>
+                <span><?= htmlspecialchars($ride['departure']) ?></span>
+                <span style="color:var(--text-light)">→</span>
+                <span class="arr"><?= htmlspecialchars($ride['destination']) ?></span>
               </div>
+
               <div class="ride-footer">
                 <div class="driver-info">
-                  <div class="avatar" style="background:#7c6fcd">LF</div>
-                  <div><div class="driver-name">Liam Foster</div><div style="display:flex;align-items:center"><div class="stars"><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span><span class="star" style="color:#d0d8dc">★</span><span class="star" style="color:#d0d8dc">★</span></div><span class="review-count">(1)</span></div></div>
+                  <div class="avatar" style="background:<?= $color ?>"><?= $initials ?></div>
+                  <div><div class="driver-name"><?= htmlspecialchars($ride['driver_name']) ?></div></div>
                 </div>
-                <div class="seats"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>2 seats left</div>
-              </div>
-              <button class="btn-book" onclick="openBooking('Berkeley, CA','Sacramento, CA','Sun, Apr 19 · 7:00 AM','Liam Foster','$18',2)">Reserve a seat</button>
-            </div>
-            <div class="ride-card" style="animation-delay:0.1s">
-              <div class="ride-header">
-                <div class="ride-date"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Mon, Apr 20 · 9:00 AM</div>
-                <div class="ride-price"><strong>$45</strong><small>per seat</small></div>
-              </div>
-              <div class="ride-route">
-                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                <span>San Francisco, CA</span><span style="color:var(--text-light)">→</span><span class="arr">Los Angeles, CA</span>
-              </div>
-              <div class="ride-footer">
-                <div class="driver-info">
-                  <div class="avatar" style="background:#1a9fa0">MC</div>
-                  <div><div class="driver-name">Maya Chen</div><div style="display:flex;align-items:center"><div class="stars"><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span></div><span class="review-count">(1)</span></div></div>
+                <div class="seats">
+                  <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>
+                  <?= (int)$ride['seats'] ?> seat<?= $ride['seats'] > 1 ? 's' : '' ?> left
                 </div>
-                <div class="seats"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>3 seats left</div>
               </div>
-              <button class="btn-book" onclick="openBooking('San Francisco, CA','Los Angeles, CA','Mon, Apr 20 · 9:00 AM','Maya Chen','$45',3)">Reserve a seat</button>
+
+              <!-- Bouton réservation via POST -->
+              <?php if ($isOwner): ?>
+                <button class="btn-book" disabled style="opacity:0.5;cursor:not-allowed;">Your trip</button>
+              <?php elseif ($alreadyBooked): ?>
+                <button class="btn-book" disabled style="opacity:0.5;cursor:not-allowed;background:#aaa;">Already booked ✓</button>
+              <?php else: ?>
+                <form method="POST" action="findRide.php?from=<?= urlencode($from) ?>&to=<?= urlencode($to) ?>&date=<?= urlencode($date) ?>">
+                  <input type="hidden" name="book_ride_id" value="<?= (int)$ride['id'] ?>">
+                  <button type="submit" class="btn-book">Reserve a seat</button>
+                </form>
+              <?php endif; ?>
             </div>
-            <div class="ride-card" style="animation-delay:0.15s">
-              <div class="ride-header">
-                <div class="ride-date"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Thu, Apr 23 · 6:00 AM</div>
-                <div class="ride-price"><strong>$35</strong><small>per seat</small></div>
-              </div>
-              <div class="ride-route">
-                <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                <span>San Jose, CA</span><span style="color:var(--text-light)">→</span><span class="arr">Lake Tahoe, CA</span>
-              </div>
-              <div class="ride-footer">
-                <div class="driver-info">
-                  <div class="avatar" style="background:#1a9fa0">MC</div>
-                  <div><div class="driver-name">Maya Chen</div><div style="display:flex;align-items:center"><div class="stars"><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span><span class="star" style="color:var(--star)">★</span></div><span class="review-count">(1)</span></div></div>
-                </div>
-                <div class="seats"><svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>4 seats left</div>
-              </div>
-              <button class="btn-book" onclick="openBooking('San Jose, CA','Lake Tahoe, CA','Thu, Apr 23 · 6:00 AM','Maya Chen','$35',4)">Reserve a seat</button>
-            </div>
+            <?php endforeach; ?>
           </div>
+          <?php endif; ?>
         </div>
+        <?php endif; ?>
+
       </div>
     </main>
   </div>
 
 </body>
 </html>
+
+
