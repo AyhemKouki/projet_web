@@ -271,6 +271,8 @@ $user = $stmt->fetch();
               <!-- Bouton réservation via POST -->
               <?php if ($isOwner): ?>
                 <button class="btn-book" disabled style="opacity:0.5;cursor:not-allowed;">Your trip</button>
+              <?php elseif ($ride['seats'] <= 0): ?>
+                <button class="btn-book" disabled style="opacity:0.5;cursor:not-allowed;background:#e05c5c;">Trip full ✗</button>
               <?php elseif ($alreadyBooked): ?>
                 <button class="btn-book" disabled style="opacity:0.5;cursor:not-allowed;background:#aaa;">Already booked ✓</button>
               <?php else: ?>
