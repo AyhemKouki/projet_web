@@ -32,7 +32,6 @@ $user = $stmt->fetch();
         <a href="logout.php" class="btn-logout">Logout</a>
     </div>
   </nav>
-
   <!-- ── MAIN LAYOUT: sidebar + content ── -->
   <div class="app-layout">
 
@@ -53,20 +52,20 @@ $user = $stmt->fetch();
       <div class="sidebar-section-label"> Panel</div>
       <nav class="sidebar-nav">
         <div class="auth-footer">
-            <a class="snav-item active" href="findRide.php">
+            <a class="snav-item " href="findRide.php">
 
             <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
             Find a ride
             </a>
         </div>
         <div class="auth-footer">
-            <a class="snav-item" onclick="showPanel('panel-post')">
+            <a class="snav-item" href="postRide.php">
             <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
             Post a trip
             </a>
         </div>
         <div class="auth-footer">
-            <a class="snav-item" onclick="showPanel('panel-edit')">
+            <a class="snav-item active" href="myTrip.php">
             <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
             Edit my trip
             </a>

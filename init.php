@@ -15,7 +15,10 @@ CREATE TABLE IF NOT EXISTS rides (
     departure TEXT,
     destination TEXT,
     date TEXT,
+    departure_time TEXT,
     seats INTEGER,
+    price REAL,
+    notes TEXT,
     FOREIGN KEY(driver_id) REFERENCES users(id)
 );
 

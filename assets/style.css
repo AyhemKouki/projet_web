@@ -388,6 +388,55 @@
   .modal-success p { color: var(--text-mid); font-size: 0.95rem; line-height: 1.6; margin-bottom: 24px; }
   .modal-form { display: block; }
 
+  
+  /* ── SUCCESS MESSAGE ── */
+.success-msg {
+    position: relative;
+    background: linear-gradient(135deg, #e6f9f0, #f0fff7);
+    border: 1px solid #b7ebc6;
+    border-left: 5px solid #28a745;
+    border-radius: 12px;
+    padding: 14px 18px 14px 50px;
+    margin: 20px auto;
+    max-width: 650px;
+    color: #1e7e34;
+    font-weight: 500;
+    text-align: left;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+    animation: slideFade 0.4s ease;
+}
+
+/* icon */
+.success-msg::before {
+    content: "✔";
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 26px;
+    height: 26px;
+    background: #28a745;
+    color: #fff;
+    font-size: 14px;
+    font-weight: bold;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* animation */
+@keyframes slideFade {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
   /* ── AUTH REQUIRED BANNER ── */
   .auth-required-banner {
     display: none;
