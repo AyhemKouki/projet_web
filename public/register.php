@@ -23,6 +23,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt->execute([$name, $email, $hashedPassword]);
 
             $message = "User registered successfully!";
+            header("Location: ../public/login.php");
         }
 
     } else {

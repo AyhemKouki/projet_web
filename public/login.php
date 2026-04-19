@@ -16,7 +16,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     if ($user && password_verify($password, $user['password'])) {
         $_SESSION['user_id'] = $user['id'];
-        echo "Logged in!";
+        header("Location: ../public/findRide.php");
+        exit();
     } else {
         echo "Invalid credentials";
     }
@@ -26,7 +27,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Wayshare - Sign up</title>
+    <title>Wayshare - Sign in</title>
     <link rel="stylesheet" href="../assets/style.css">
 </head>
 

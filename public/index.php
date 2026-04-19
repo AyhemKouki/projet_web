@@ -21,9 +21,9 @@ session_start();
         Find a ride
       </button>
     </div>
-    <div class="nav-right">
-      <a class="btn-ghost" href="login.php">Log in</a>
-      <a class="btn-teal" href="register.php">Sign up</a>
+    <div class="nav-right ">
+      <a class="btn-ghost" href="login.php" style="text-decoration: none;">Log in</a>
+      <a class="btn-teal" href="register.php" style="text-decoration: none;">Sign up</a>
     </div>
   </nav>
 
