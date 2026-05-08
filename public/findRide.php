@@ -12,10 +12,25 @@ $user_id = $_SESSION['user_id'];
 $success = "";
 $error   = "";
 
+// Ensure bookings table has rating column for driver reviews
+try {
+    $columns = [];
+    $colStmt = $pdo->query("PRAGMA table_info(bookings)");
+    foreach ($colStmt->fetchAll() as $column) {
+        $columns[] = $column['name'];
+    }
+    if (!in_array('rating', $columns, true)) {
+        $pdo->exec("ALTER TABLE bookings ADD COLUMN rating INTEGER DEFAULT NULL");
+    }
+} catch (Exception $e) {
+    // ignore if schema update fails
+}
+
 // ─── RÉSERVATION (POST) ───────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_ride_id'])) {
 
     $ride_id = (int) $_POST['book_ride_id'];
+    $requested_seats = max(1, (int) ($_POST['book_seat_count'] ?? 1));
 
     // Vérifier que le ride existe et a des places
     $stmt = $pdo->prepare("SELECT r.*, u.name AS driver_name FROM rides r JOIN users u ON u.id = r.driver_id WHERE r.id = ?");
@@ -28,8 +43,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_ride_id'])) {
     } elseif ($ride['driver_id'] == $user_id) {
         $error = "Vous ne pouvez pas réserver votre propre trajet.";
 
+    } elseif ($requested_seats < 1) {
+        $error = "Veuillez choisir au moins une place.";
+
     } elseif ($ride['seats'] <= 0) {
         $error = "Plus de places disponibles.";
+
+    } elseif ($requested_seats > $ride['seats']) {
+        $error = "Le nombre de places demandé est supérieur aux places disponibles.";
 
     } else {
         // Vérifier si déjà réservé
@@ -39,14 +60,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_ride_id'])) {
         if ($stmt->rowCount() > 0) {
             $error = "Vous avez déjà réservé ce trajet.";
         } else {
-            // Insérer la réservation
-            $stmt = $pdo->prepare("INSERT INTO bookings (user_id, ride_id) VALUES (?, ?)");
-            $stmt->execute([$user_id, $ride_id]);
+            // Ajouter la colonne seats si elle n'existe pas encore
+            $columns = [];
+            $colStmt = $pdo->query("PRAGMA table_info(bookings)");
+            foreach ($colStmt->fetchAll() as $column) {
+                $columns[] = $column['name'];
+            }
+            if (!in_array('seats', $columns, true)) {
+                $pdo->exec("ALTER TABLE bookings ADD COLUMN seats INTEGER DEFAULT 1;");
+            }
+
+            // Insérer la réservation avec le nombre de places réservées
+            $stmt = $pdo->prepare("INSERT INTO bookings (user_id, ride_id, seats) VALUES (?, ?, ?)");
+            $stmt->execute([$user_id, $ride_id, $requested_seats]);
 
             // Décrémenter le nombre de places
-            $pdo->prepare("UPDATE rides SET seats = seats - 1 WHERE id = ?")->execute([$ride_id]);
+            $pdo->prepare("UPDATE rides SET seats = seats - ? WHERE id = ?")->execute([$requested_seats, $ride_id]);
 
-            $success = "Réservation confirmée pour le trajet " . htmlspecialchars($ride['departure']) . " → " . htmlspecialchars($ride['destination']) . " !";
+            $success = "Réservation confirmée pour " . $requested_seats . " place" . ($requested_seats > 1 ? 's' : '') . " sur le trajet " . htmlspecialchars($ride['departure']) . " → " . htmlspecialchars($ride['destination']) . " !";
         }
     }
 }
@@ -58,36 +89,54 @@ $from        = trim($_GET['from']  ?? '');
 $to          = trim($_GET['to']    ?? '');
 $date        = trim($_GET['date']  ?? '');
 
-if ($from !== '' || $to !== '' || $date !== '') {
-    $searched = true;
+$searched = ($from !== '' || $to !== '' || $date !== '');
 
-    $sql = "
-        SELECT r.*, u.name AS driver_name
-        FROM rides r
-        JOIN users u ON u.id = r.driver_id
-        WHERE 1=1
-    ";
-    $params = [];
+$sql = "
+    SELECT
+        r.*,
+        u.name AS driver_name,
+        COALESCE(
+            (
+                SELECT ROUND(AVG(b.rating), 1)
+                FROM bookings b
+                JOIN rides r2 ON b.ride_id = r2.id
+                WHERE b.rating IS NOT NULL
+                  AND r2.driver_id = r.driver_id
+            ), 0
+        ) AS driver_rating,
+        COALESCE(
+            (
+                SELECT COUNT(b.rating)
+                FROM bookings b
+                JOIN rides r2 ON b.ride_id = r2.id
+                WHERE b.rating IS NOT NULL
+                  AND r2.driver_id = r.driver_id
+            ), 0
+        ) AS driver_rating_count
+    FROM rides r
+    JOIN users u ON u.id = r.driver_id
+    WHERE 1=1
+";
+$params = [];
 
-    if ($from !== '') {
-        $sql .= " AND r.departure LIKE ?";
-        $params[] = "%$from%";
-    }
-    if ($to !== '') {
-        $sql .= " AND r.destination LIKE ?";
-        $params[] = "%$to%";
-    }
-    if ($date !== '') {
-        $sql .= " AND r.date = ?";
-        $params[] = $date;
-    }
-
-    $sql .= " AND r.seats > 0 ORDER BY r.date ASC";
-
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $rides = $stmt->fetchAll();
+if ($from !== '') {
+    $sql .= " AND r.departure LIKE ?";
+    $params[] = "%$from%";
 }
+if ($to !== '') {
+    $sql .= " AND r.destination LIKE ?";
+    $params[] = "%$to%";
+}
+if ($date !== '') {
+    $sql .= " AND r.date = ?";
+    $params[] = $date;
+}
+
+$sql .= " AND r.seats > 0 ORDER BY r.date ASC";
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$rides = $stmt->fetchAll();
 
 // ─── INFO UTILISATEUR ─────────────────────────────────────────────────────────
 $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
@@ -153,7 +202,12 @@ $user = $stmt->fetch();
             View bookings
             </a>
         </div>
-        
+        <div class="auth-footer">
+            <a class="snav-item" href="myBookings.php">
+            <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            My bookings
+            </a>
+        </div>
       </nav>
     </aside>
 
@@ -210,14 +264,13 @@ $user = $stmt->fetch();
         </div>
 
         <!-- Résultats -->
-        <?php if ($searched): ?>
         <div class="results">
           <div class="results-count"><?= count($rides) ?> ride<?= count($rides) !== 1 ? 's' : '' ?> found</div>
 
           <?php if (empty($rides)): ?>
             <div style="text-align:center;padding:60px 20px;color:var(--text-light);">
               <svg width="48" height="48" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" fill="none" style="margin-bottom:12px;opacity:0.4"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-              <p>Aucun trajet trouvé pour ces critères.<br>Essayez d'autres dates ou villes.</p>
+              <p>Aucun trajet disponible pour ces critères.<br>Les trajets que vous avez publiés ne sont pas affichés ici.</p>
             </div>
           <?php else: ?>
           <div class="rides-grid">
@@ -255,7 +308,12 @@ $user = $stmt->fetch();
               <div class="ride-footer">
                 <div class="driver-info">
                   <div class="avatar" style="background:<?= $color ?>"><?= $initials ?></div>
-                  <div><div class="driver-name"><?= htmlspecialchars($ride['driver_name']) ?></div></div>
+                  <div>
+                    <div class="driver-name"><?= htmlspecialchars($ride['driver_name']) ?></div>
+                    <div class="driver-rating" style="font-size:0.85rem;color:var(--text-light);margin-top:3px;">
+                      <?= $ride['driver_rating_count'] > 0 ? sprintf('%.1f ★ (%d)', $ride['driver_rating'], $ride['driver_rating_count']) : 'Aucune note encore' ?>
+                    </div>
+                  </div>
                 </div>
                 <div class="seats">
                   <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>
@@ -265,28 +323,96 @@ $user = $stmt->fetch();
 
               <!-- Bouton réservation via POST -->
               <?php if ($isOwner): ?>
-                <button class="btn-book" disabled style="opacity:0.5;cursor:not-allowed;">Your trip</button>
+                <button type="button" class="btn-book btn-disabled" disabled>Votre trajet</button>
               <?php elseif ($ride['seats'] <= 0): ?>
-                <button class="btn-book" disabled style="opacity:0.5;cursor:not-allowed;background:#e05c5c;">Trip full ✗</button>
+                <button type="button" class="btn-book btn-disabled" disabled style="background:#e05c5c;">Trip full ✗</button>
               <?php elseif ($alreadyBooked): ?>
-                <button class="btn-book" disabled style="opacity:0.5;cursor:not-allowed;background:#aaa;">Already booked ✓</button>
+                <button type="button" class="btn-book btn-disabled" disabled style="background:#aaa;">Already booked ✓</button>
               <?php else: ?>
-                <form method="POST" action="findRide.php?from=<?= urlencode($from) ?>&to=<?= urlencode($to) ?>&date=<?= urlencode($date) ?>">
-                  <input type="hidden" name="book_ride_id" value="<?= (int)$ride['id'] ?>">
-                  <button type="submit" class="btn-book">Reserve a seat</button>
-                </form>
+                <button type="button" class="btn-book" 
+                        data-ride-id="<?= (int)$ride['id'] ?>"
+                        data-ride-departure="<?= htmlspecialchars($ride['departure'], ENT_QUOTES) ?>"
+                        data-ride-destination="<?= htmlspecialchars($ride['destination'], ENT_QUOTES) ?>"
+                        data-ride-seats="<?= (int)$ride['seats'] ?>"
+                        onclick="openBookingModal(this)">
+                  Réserver
+                </button>
               <?php endif; ?>
             </div>
             <?php endforeach; ?>
           </div>
           <?php endif; ?>
         </div>
-        <?php endif; ?>
 
       </div>
     </main>
   </div>
 
+  <div class="modal-overlay" id="bookingModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Réserver des places</h2>
+        <button type="button" class="modal-close" onclick="closeBookingModal()">×</button>
+      </div>
+      <p id="modalRideLabel" style="margin-bottom:16px;color:var(--text-mid);"></p>
+      <form method="POST" id="bookingForm">
+        <input type="hidden" name="book_ride_id" id="modalRideId">
+        <div style="margin-bottom:16px;">
+          <label for="bookSeatCount" style="display:block;margin-bottom:8px;font-weight:600;">Nombre de places</label>
+          <input id="bookSeatCount" name="book_seat_count" type="number" min="1" value="1" style="width:100%;padding:10px;border:1px solid #d9e6e9;border-radius:12px;font-size:0.95rem;" required>
+          <div id="seatHelp" style="margin-top:8px;font-size:0.88rem;color:var(--text-light);"></div>
+        </div>
+        <div id="modalError" style="display:none;margin-bottom:16px;padding:12px;border:1px solid #e05c5c;border-radius:10px;background:#fff0f0;color:#a83232;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button type="button" class="btn-secondary" onclick="closeBookingModal()" style="background:#f1f7f7;color:#1a9fa0;padding:10px 18px;border-radius:10px;border:none;cursor:pointer;">Annuler</button>
+          <button type="submit" class="btn-book" style="padding:10px 18px;">Confirmer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function openBookingModal(button) {
+      var rideId = button.dataset.rideId;
+      var departure = button.dataset.rideDeparture;
+      var destination = button.dataset.rideDestination;
+      var seats = parseInt(button.dataset.rideSeats, 10);
+
+      document.getElementById('modalRideLabel').textContent = departure + ' → ' + destination + ' (' + seats + ' place' + (seats > 1 ? 's' : '') + ' disponibles)';
+      document.getElementById('modalRideId').value = rideId;
+
+      var seatField = document.getElementById('bookSeatCount');
+      seatField.max = seats;
+      seatField.value = 1;
+      document.getElementById('seatHelp').textContent = 'Maximum ' + seats + ' place' + (seats > 1 ? 's' : '') + '.';
+      document.getElementById('modalError').style.display = 'none';
+      document.getElementById('bookingModal').classList.add('open');
+    }
+
+    function closeBookingModal() {
+      document.getElementById('bookingModal').classList.remove('open');
+    }
+
+    document.getElementById('bookingForm').addEventListener('submit', function (event) {
+      var seatField = document.getElementById('bookSeatCount');
+      var maxSeats = parseInt(seatField.max, 10);
+      var requested = parseInt(seatField.value, 10);
+      var errorBox = document.getElementById('modalError');
+
+      if (requested < 1) {
+        event.preventDefault();
+        errorBox.textContent = 'Veuillez indiquer au moins une place.';
+        errorBox.style.display = 'block';
+        return;
+      }
+      if (requested > maxSeats) {
+        event.preventDefault();
+        errorBox.textContent = 'Le nombre de places demandé est supérieur aux places disponibles.';
+        errorBox.style.display = 'block';
+        return;
+      }
+    });
+  </script>
 </body>
 </html>
 

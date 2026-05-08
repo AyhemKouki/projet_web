@@ -79,9 +79,9 @@ $user = $stmt->fetch();
             </a>
         </div>
         <div class="auth-footer">
-            <a class="snav-item snav-danger" onclick="showPanel('panel-delete')">
-            <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-            Delete my trip
+            <a class="snav-item" href="myBookings.php">
+            <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+            My bookings
             </a>
         </div>
       </nav>

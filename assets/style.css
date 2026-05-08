@@ -294,6 +294,32 @@
     cursor: pointer; transition: background 0.2s;
   }
   .btn-book:hover { background: var(--teal-dark); }
+  .btn-book[disabled], .btn-book.btn-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: #999;
+  }
+  .btn-book[disabled]:hover, .btn-book.btn-disabled:hover {
+    background: #999;
+  }
+
+  .rating-stars {
+    color: #f2c94c;
+    font-size: 0.95rem;
+    line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .rating-stars span.rating-label {
+    color: var(--text-light);
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .rating-stars.rating-empty {
+    color: #b0bec5;
+    font-weight: 500;
+  }
 
   /* ── MODAL OVERLAY ── */
   .modal-overlay {

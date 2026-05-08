@@ -7,9 +7,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     $name = trim($_POST['name']);
     $email = trim($_POST['email']);
+    $phone = trim($_POST['phone'] ?? '');
     $password = $_POST['password'];
 
-    if ($name && $email && $password) {
+    // Create phone column if it does not yet exist on existing DB
+    try {
+        $columns = $pdo->query("PRAGMA table_info(users)")->fetchAll();
+        $hasPhone = false;
+        foreach ($columns as $column) {
+            if ($column['name'] === 'phone') {
+                $hasPhone = true;
+                break;
+            }
+        }
+        if (!$hasPhone) {
+            $pdo->exec("ALTER TABLE users ADD COLUMN phone TEXT");
+        }
+    } catch (Exception $e) {
+        // ignore if migration fails
+    }
+
+    if ($name && $email && $password && $phone) {
 
         $check = $pdo->prepare("SELECT id FROM users WHERE email = ?");
         $check->execute([$email]);
@@ -19,11 +37,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } else {
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
-            $stmt = $pdo->prepare("INSERT INTO users (name, email, password) VALUES (?, ?, ?)");
-            $stmt->execute([$name, $email, $hashedPassword]);
+            $stmt = $pdo->prepare("INSERT INTO users (name, email, password, phone) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$name, $email, $hashedPassword, $phone]);
 
             $message = "User registered successfully!";
             header("Location: ../public/login.php");
+            exit();
         }
 
     } else {
@@ -78,6 +97,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <div class="field-group">
       <label>Email</label>
       <input type="email" name="email" placeholder="you@example.com" required>
+    </div>
+
+    <div class="field-group">
+      <label>Phone number</label>
+      <input type="tel" name="phone" placeholder="+216 " required>
     </div>
 
     <div class="field-group">

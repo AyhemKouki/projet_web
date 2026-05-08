@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     email TEXT UNIQUE,
-    password TEXT
+    password TEXT,
+    phone TEXT
 );
 
 CREATE TABLE IF NOT EXISTS rides (
