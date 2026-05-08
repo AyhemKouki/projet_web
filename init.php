@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     email TEXT UNIQUE,
-    password TEXT
+    password TEXT,
+    phone TEXT
 );
 
 CREATE TABLE IF NOT EXISTS rides (
@@ -15,7 +16,10 @@ CREATE TABLE IF NOT EXISTS rides (
     departure TEXT,
     destination TEXT,
     date TEXT,
+    departure_time TEXT,
     seats INTEGER,
+    price REAL,
+    notes TEXT,
     FOREIGN KEY(driver_id) REFERENCES users(id)
 );
 
