@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Dashboard – Wayshare</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    *{
+      margin:0;
+      padding:0;
+      box-sizing:border-box;
+    }
+
+    :root{
+      --teal:#1a9fa0;
+      --teal-dark:#138080;
+      --teal-light:#e8f7f7;
+      --teal-xlight:#f3fbfb;
+
+      --text-dark:#1a2b30;
+      --text-mid:#4a6070;
+      --text-light:#7a9aaa;
+
+      --white:#ffffff;
+      --border:#dde8ec;
+      --bg:#eef8f8;
+
+      --success-bg:#e6f7ee;
+      --success:#1a8a50;
+
+      --warning-bg:#fff8e1;
+      --warning:#b07800;
+
+      --danger:#e05555;
+
+      --shadow:0 2px 16px rgba(26,159,160,0.08);
+    }
+
+    body{
+      font-family:'DM Sans',sans-serif;
+      background:var(--bg);
+      color:var(--text-dark);
+      min-height:100vh;
+    }
+
+    /* ================= NAVBAR ================= */
+
+    nav{
+      height:60px;
+      background:var(--white);
+      border-bottom:1px solid var(--border);
+
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+
+      padding:0 40px;
+
+      position:sticky;
+      top:0;
+      z-index:100;
+    }
+
+    .nav-logo{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      text-decoration:none;
+    }
+
+    .logo-icon{
+      width:38px;
+      height:38px;
+      background:var(--teal);
+
+      border-radius:12px;
+
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .logo-icon svg{
+      width:20px;
+      height:20px;
+      fill:white;
+    }
+
+    .nav-logo span{
+      font-size:1.15rem;
+      font-weight:800;
+      color:var(--text-dark);
+    }
+
+    .admin-profile{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .admin-avatar{
+      width:40px;
+      height:40px;
+      border-radius:50%;
+      background:var(--teal);
+      color:white;
+
+      display:flex;
+      align-items:center;
+      justify-content:center;
+
+      font-weight:700;
+    }
+
+    /* ================= LAYOUT ================= */
+
+    .app-layout{
+      display:flex;
+      min-height:calc(100vh - 60px);
+    }
+
+    /* ================= SIDEBAR ================= */
+
+    .sidebar{
+      width:260px;
+      background:var(--white);
+      border-right:1px solid var(--border);
+
+      padding:24px 16px;
+
+      position:sticky;
+      top:60px;
+      height:calc(100vh - 60px);
+    }
+
+    .sidebar-section{
+      margin-bottom:32px;
+    }
+
+    .sidebar-section-label{
+      font-size:0.72rem;
+      font-weight:700;
+      text-transform:uppercase;
+      letter-spacing:0.08em;
+      color:var(--text-light);
+
+      margin-bottom:12px;
+      padding:0 8px;
+    }
+
+    .snav-item{
+      display:flex;
+      align-items:center;
+      gap:10px;
+
+      padding:12px 14px;
+      border-radius:12px;
+
+      text-decoration:none;
+      color:var(--text-mid);
+
+      font-size:0.92rem;
+      font-weight:600;
+
+      transition:0.2s;
+      margin-bottom:6px;
+    }
+
+    .snav-item:hover,
+    .snav-item.active{
+      background:var(--teal-xlight);
+      color:var(--teal);
+    }
+
+    /* ================= MAIN CONTENT ================= */
+
+    .main-content{
+      flex:1;
+      padding:40px;
+      overflow-y:auto;
+    }
+
+    .header-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:32px;
+    }
+
+    .page-title h1{
+      font-size:2rem;
+      margin-bottom:6px;
+    }
+
+    .page-title p{
+      color:var(--text-mid);
+      font-size:0.95rem;
+    }
+
+    /* ================= BUTTONS ================= */
+
+    .btn-teal{
+      background:var(--teal);
+      color:white;
+
+      border:none;
+      border-radius:10px;
+
+      padding:10px 18px;
+
+      font-size:0.9rem;
+      font-weight:700;
+
+      cursor:pointer;
+      transition:0.2s;
+    }
+
+    .btn-teal:hover{
+      background:var(--teal-dark);
+    }
+
+    .btn-danger{
+      background:var(--danger);
+      color:white;
+
+      border:none;
+      border-radius:10px;
+
+      padding:10px 18px;
+
+      font-size:0.9rem;
+      font-weight:700;
+
+      cursor:pointer;
+    }
+
+    /* ================= STATS ================= */
+
+    .stats-grid{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:20px;
+
+      margin-bottom:32px;
+    }
+
+    .stat-card{
+      background:var(--white);
+      border:1px solid var(--border);
+
+      border-radius:18px;
+      padding:24px;
+
+      box-shadow:var(--shadow);
+    }
+
+    .stat-card label{
+      display:block;
+      margin-bottom:10px;
+
+      color:var(--text-mid);
+      font-size:0.85rem;
+      font-weight:600;
+    }
+
+    .stat-card strong{
+      font-size:1.9rem;
+      font-weight:800;
+    }
+
+    /* ================= DATA CARDS ================= */
+
+    .data-card{
+      background:var(--white);
+      border:1px solid var(--border);
+
+      border-radius:22px;
+      padding:24px;
+
+      box-shadow:var(--shadow);
+
+      margin-bottom:32px;
+    }
+
+    .card-title{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+
+      margin-bottom:20px;
+    }
+
+    .card-title h3{
+      font-size:1.2rem;
+    }
+
+    /* ================= TABLE ================= */
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+    }
+
+    th{
+      text-align:left;
+      padding:14px 16px;
+
+      font-size:0.75rem;
+      text-transform:uppercase;
+      letter-spacing:0.05em;
+
+      color:var(--text-light);
+
+      border-bottom:1px solid var(--border);
+    }
+
+    td{
+      padding:18px 16px;
+      border-bottom:1px solid var(--border);
+
+      font-size:0.92rem;
+      color:var(--text-dark);
+    }
+
+    tr:last-child td{
+      border-bottom:none;
+    }
+
+    /* ================= STATUS ================= */
+
+    .status-pill{
+      display:inline-block;
+
+      padding:5px 12px;
+      border-radius:999px;
+
+      font-size:0.74rem;
+      font-weight:700;
+    }
+
+    .confirmed{
+      background:var(--success-bg);
+      color:var(--success);
+    }
+
+    .pending{
+      background:var(--warning-bg);
+      color:var(--warning);
+    }
+
+    /* ================= RESPONSIVE ================= */
+
+    @media(max-width:1200px){
+      .stats-grid{
+        grid-template-columns:repeat(2,1fr);
+      }
+    }
+
+    @media(max-width:900px){
+
+      .sidebar{
+        display:none;
+      }
+
+      .main-content{
+        padding:20px;
+      }
+
+      .stats-grid{
+        grid-template-columns:1fr;
+      }
+
+      .header-row{
+        flex-direction:column;
+        align-items:flex-start;
+        gap:16px;
+      }
+
+      table{
+        display:block;
+        overflow-x:auto;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ================= NAVBAR ================= -->
+
+  <nav>
+
+    <a href="#" class="nav-logo">
+
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24">
+          <path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11a2 2 0 012 2v3m-4 12H9m10 0h-2m2 0a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2m10 0h-2"
+          stroke="white"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          fill="none"/>
+        </svg>
+      </div>
+
+      <span>Wayshare Admin</span>
+
+    </a>
+
+    <div class="admin-profile">
+      <div class="admin-avatar">A</div>
+    </div>
+
+  </nav>
+
+  <!-- ================= APP LAYOUT ================= -->
+
+  <div class="app-layout">
+
+    <!-- ================= SIDEBAR ================= -->
+
+    <aside class="sidebar">
+
+      <div class="sidebar-section">
+
+        <div class="sidebar-section-label">Main Menu</div>
+
+        <a href="#" class="snav-item active">Dashboard</a>
+        <a href="#" class="snav-item">Ride Management</a>
+        <a href="#" class="snav-item">User Management</a>
+
+      </div>
+
+      <div class="sidebar-section">
+
+        <div class="sidebar-section-label">System</div>
+
+        <a href="#" class="snav-item">Settings</a>
+        <a href="#" class="snav-item" style="color: var(--danger);">Logout</a>
+
+      </div>
+
+    </aside>
+
+    <!-- ================= MAIN CONTENT ================= -->
+
+    <main class="main-content">
+
+      <!-- HEADER -->
+
+      <div class="header-row">
+
+        <div class="page-title">
+          <h1>Dashboard Overview</h1>
+          <p>Monitor rides, users and more.</p>
+        </div>
+
+      </div>
+
+      <!-- STATS -->
+
+      <div class="stats-grid">
+
+        <div class="stat-card">
+          <label>Total Rides</label>
+          <strong>1,284</strong>
+        </div>
+
+        <div class="stat-card">
+          <label>Total Users</label>
+          <strong>8,420</strong>
+        </div>
+
+        <div class="stat-card">
+          <label> Reviews</label>
+          <strong>42</strong>
+        </div>
+
+      </div>
+
+      <!-- BOOKINGS -->
+
+      <div class="data-card">
+
+        <div class="card-title">
+          <h3>Recent Bookings</h3>
+        </div>
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Route</th>
+              <th>Date</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+
+            <tr>
+              <td>Sarah Jenkins</td>
+              <td>Paris → Lyon</td>
+              <td>Oct 12, 2025</td>
+              <td>
+                <span class="status-pill confirmed">Confirmed</span>
+              </td>
+              <td>
+                <button class="btn-teal">View</button>
+              </td>
+            </tr>
+
+            <tr>
+              <td>Marc Dupont</td>
+              <td>Marseille → Nice</td>
+              <td>Oct 13, 2025</td>
+              <td>
+                <span class="status-pill pending">Pending</span>
+              </td>
+              <td>
+                <button class="btn-teal">View</button>
+              </td>
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+      <!-- RIDE MANAGEMENT -->
+
+      <div class="data-card">
+
+        <div class="card-title">
+
+          <h3>Ride Management</h3>
+
+          <button class="btn-teal">
+            + Add Ride
+          </button>
+
+        </div>
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>Driver</th>
+              <th>Route</th>
+              <th>Seats</th>
+              <th>Price</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+
+            <tr>
+              <td>John Carter</td>
+              <td>Tunis → Sousse</td>
+              <td>3</td>
+              <td>$18</td>
+              <td>
+                <span class="status-pill confirmed">Active</span>
+              </td>
+              <td>
+                <button class="btn-teal">Edit</button>
+              </td>
+            </tr>
+
+            <tr>
+              <td>Emma Wilson</td>
+              <td>Sfax → Tunis</td>
+              <td>2</td>
+              <td>$22</td>
+              <td>
+                <span class="status-pill pending">Pending</span>
+              </td>
+              <td>
+                <button class="btn-teal">Edit</button>
+              </td>
+            </tr>
+
+            <tr>
+              <td>Ali Ben Salah</td>
+              <td>Nabeul → Hammamet</td>
+              <td>4</td>
+              <td>$10</td>
+              <td>
+                <span class="status-pill confirmed">Active</span>
+              </td>
+              <td>
+                <button class="btn-teal">Edit</button>
+              </td>
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+      <!-- USER MANAGEMENT -->
+
+      <div class="data-card">
+
+        <div class="card-title">
+
+          <h3>User Management</h3>
+
+          <button class="btn-teal">
+            + Add User
+          </button>
+
+        </div>
+
+        <table>
+
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Joined</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+
+            <tr>
+              <td>Sarah Jenkins</td>
+              <td>sarah@example.com</td>
+              <td>Passenger</td>
+              <td>
+                <span class="status-pill confirmed">Active</span>
+              </td>
+              <td>Jan 12, 2025</td>
+              <td>
+                <button class="btn-teal">Manage</button>
+              </td>
+            </tr>
+
+            <tr>
+              <td>Marc Dupont</td>
+              <td>marc@example.com</td>
+              <td>Driver</td>
+              <td>
+                <span class="status-pill pending">Suspended</span>
+              </td>
+              <td>Feb 02, 2025</td>
+              <td>
+                <button class="btn-teal">Manage</button>
+              </td>
+            </tr>
+
+            <tr>
+              <td>Leila Hamdi</td>
+              <td>leila@example.com</td>
+              <td>Admin</td>
+              <td>
+                <span class="status-pill confirmed">Active</span>
+              </td>
+              <td>Mar 15, 2025</td>
+              <td>
+                <button class="btn-teal">Manage</button>
+              </td>
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </main>
+
+  </div>
+
+</body>
+</html>
