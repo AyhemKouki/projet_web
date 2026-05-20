@@ -1,6 +1,10 @@
 <?php
 session_start();
+
 require '../config/db.php';
+require '../models/Booking.php';
+require '../models/User.php';
+
 
 // Redirect if not logged in
 if (!isset($_SESSION['user_id'])) {
@@ -10,32 +14,16 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
+$bookingModel = new Booking($pdo);
+$userModel = new User($pdo);
+
 // ─── RÉCUPÉRER LES RÉSERVATIONS POUR LES TRAJETS DE L'UTILISATEUR ──────────────────────────────────
 $bookings = [];
 $totalEarnings = 0;
 
 try {
     // Récupérer tous les trajets de l'utilisateur avec leurs réservations
-    $stmt = $pdo->prepare("
-        SELECT
-            r.id as ride_id,
-            r.departure,
-            r.destination,
-            r.date,
-            r.price,
-            r.seats,
-            b.id as booking_id,
-            u.name as passenger_name,
-            u.email as passenger_email,
-            b.created_at as booking_date
-        FROM rides r
-        JOIN bookings b ON b.ride_id = r.id
-        JOIN users u ON u.id = b.user_id
-        WHERE r.driver_id = ?
-        ORDER BY r.date DESC, b.created_at DESC
-    ");
-    $stmt->execute([$user_id]);
-    $bookings = $stmt->fetchAll();
+    $bookings = $bookingModel->getDriverBookings($user_id);
 
     // Calculer les revenus totaux
     foreach ($bookings as $booking) {
@@ -48,9 +36,7 @@ try {
 }
 
 // ─── INFO UTILISATEUR ─────────────────────────────────────────────────────────
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$user_id]);
-$user = $stmt->fetch();
+$user = $userModel->findById($user_id);
 ?>
 <!DOCTYPE html>
 <html>

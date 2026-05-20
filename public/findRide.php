@@ -1,8 +1,10 @@
 <?php
 session_start();
 require '../config/db.php';
-
-// Redirect if not logged in
+require '../models/User.php';
+require '../models/Ride.php';
+require '../models/Booking.php';
+require '../models/Avis.php';
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../public/login.php");
     exit();
@@ -10,138 +12,46 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 $success = "";
-$error   = "";
+$error = "";
 
-// Ensure bookings table has rating column for driver reviews
-try {
-    $columns = [];
-    $colStmt = $pdo->query("PRAGMA table_info(bookings)");
-    foreach ($colStmt->fetchAll() as $column) {
-        $columns[] = $column['name'];
-    }
-    if (!in_array('rating', $columns, true)) {
-        $pdo->exec("ALTER TABLE bookings ADD COLUMN rating INTEGER DEFAULT NULL");
-    }
-} catch (Exception $e) {
-    // ignore if schema update fails
-}
+$userModel = new User($pdo);
+$rideModel = new Ride($pdo);
+$bookingModel = new Booking($pdo);
+$avisModel = new Avis($pdo);
 
-// ─── RÉSERVATION (POST) ───────────────────────────────────────────────────────
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['book_ride_id'])) {
-
     $ride_id = (int) $_POST['book_ride_id'];
     $requested_seats = max(1, (int) ($_POST['book_seat_count'] ?? 1));
 
-    // Vérifier que le ride existe et a des places
-    $stmt = $pdo->prepare("SELECT r.*, u.name AS driver_name FROM rides r JOIN users u ON u.id = r.driver_id WHERE r.id = ?");
-    $stmt->execute([$ride_id]);
-    $ride = $stmt->fetch();
+    $ride = $rideModel->findById($ride_id);
 
     if (!$ride) {
         $error = "Ce trajet n'existe pas.";
-
-    } elseif ($ride['driver_id'] == $user_id) {
-        $error = "Vous ne pouvez pas réserver votre propre trajet.";
-
     } elseif ($requested_seats < 1) {
         $error = "Veuillez choisir au moins une place.";
-
     } elseif ($ride['seats'] <= 0) {
         $error = "Plus de places disponibles.";
-
     } elseif ($requested_seats > $ride['seats']) {
         $error = "Le nombre de places demandé est supérieur aux places disponibles.";
-
+    } elseif ($bookingModel->exists($user_id, $ride_id)) {
+        $error = "Vous avez déjà réservé ce trajet.";
     } else {
-        // Vérifier si déjà réservé
-        $stmt = $pdo->prepare("SELECT id FROM bookings WHERE user_id = ? AND ride_id = ?");
-        $stmt->execute([$user_id, $ride_id]);
 
-        if ($stmt->rowCount() > 0) {
-            $error = "Vous avez déjà réservé ce trajet.";
-        } else {
-            // Ajouter la colonne seats si elle n'existe pas encore
-            $columns = [];
-            $colStmt = $pdo->query("PRAGMA table_info(bookings)");
-            foreach ($colStmt->fetchAll() as $column) {
-                $columns[] = $column['name'];
-            }
-            if (!in_array('seats', $columns, true)) {
-                $pdo->exec("ALTER TABLE bookings ADD COLUMN seats INTEGER DEFAULT 1;");
-            }
+        $bookingModel->create($user_id, $ride_id, $requested_seats);
+        $rideModel->decrementSeats($ride_id, $requested_seats);
 
-            // Insérer la réservation avec le nombre de places réservées
-            $stmt = $pdo->prepare("INSERT INTO bookings (user_id, ride_id, seats) VALUES (?, ?, ?)");
-            $stmt->execute([$user_id, $ride_id, $requested_seats]);
-
-            // Décrémenter le nombre de places
-            $pdo->prepare("UPDATE rides SET seats = seats - ? WHERE id = ?")->execute([$requested_seats, $ride_id]);
-
-            $success = "Réservation confirmée pour " . $requested_seats . " place" . ($requested_seats > 1 ? 's' : '') . " sur le trajet " . htmlspecialchars($ride['departure']) . " → " . htmlspecialchars($ride['destination']) . " !";
-        }
+        $success = "Réservation confirmée pour " . $requested_seats . " place" . ($requested_seats > 1 ? 's' : '') . " sur le trajet " . htmlspecialchars($ride['departure']) . " → " . htmlspecialchars($ride['destination']) . " !";
     }
 }
 
-// ─── RECHERCHE (GET) ──────────────────────────────────────────────────────────
-$rides       = [];
-$searched    = false;
-$from        = trim($_GET['from']  ?? '');
-$to          = trim($_GET['to']    ?? '');
-$date        = trim($_GET['date']  ?? '');
-
+$from = trim($_GET['from'] ?? '');
+$to = trim($_GET['to'] ?? '');
+$date = trim($_GET['date'] ?? '');
 $searched = ($from !== '' || $to !== '' || $date !== '');
+$rides = $rideModel->searchAvailable($from, $to, $date , $_SESSION['user_id']);
 
-$sql = "
-    SELECT
-        r.*,
-        u.name AS driver_name,
-        COALESCE(
-            (
-                SELECT ROUND(AVG(b.rating), 1)
-                FROM bookings b
-                JOIN rides r2 ON b.ride_id = r2.id
-                WHERE b.rating IS NOT NULL
-                  AND r2.driver_id = r.driver_id
-            ), 0
-        ) AS driver_rating,
-        COALESCE(
-            (
-                SELECT COUNT(b.rating)
-                FROM bookings b
-                JOIN rides r2 ON b.ride_id = r2.id
-                WHERE b.rating IS NOT NULL
-                  AND r2.driver_id = r.driver_id
-            ), 0
-        ) AS driver_rating_count
-    FROM rides r
-    JOIN users u ON u.id = r.driver_id
-    WHERE 1=1
-";
-$params = [];
-
-if ($from !== '') {
-    $sql .= " AND r.departure LIKE ?";
-    $params[] = "%$from%";
-}
-if ($to !== '') {
-    $sql .= " AND r.destination LIKE ?";
-    $params[] = "%$to%";
-}
-if ($date !== '') {
-    $sql .= " AND r.date = ?";
-    $params[] = $date;
-}
-
-$sql .= " AND r.seats > 0 ORDER BY r.date ASC";
-
-$stmt = $pdo->prepare($sql);
-$stmt->execute($params);
-$rides = $stmt->fetchAll();
-
-// ─── INFO UTILISATEUR ─────────────────────────────────────────────────────────
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$user_id]);
-$user = $stmt->fetch();
+$user = $userModel->findById($user_id);
 ?>
 <!DOCTYPE html>
 <html>
@@ -165,51 +75,53 @@ $user = $stmt->fetch();
   <div class="app-layout">
 
     <!-- ═══ SIDEBAR ═══ -->
-    <aside class="driver-sidebar">
-      <div class="sidebar-header">
-        <div class="sidebar-avatar">
+  <aside class="driver-sidebar">
+    <div class="sidebar-header">
+          <div class="sidebar-avatar">
             <?= strtoupper(substr($user['name'], 0, 2)) ?>
-        </div>
-        <div>
-          <div class="sidebar-name"><?= htmlspecialchars($user['name']) ?></div>
-          <div class="sidebar-role">Driver &amp; Passenger</div>
-        </div>
+          </div>
+          <div>
+            <div class="sidebar-name"><?= htmlspecialchars($user['name']) ?></div>
+            <div class="sidebar-role">Driver &amp; Passenger</div>
+          </div>
       </div>
 
-      <div class="sidebar-section-label">Panel</div>
-      <nav class="sidebar-nav"> 
-        <div class="auth-footer">
-            <a class="snav-item active" href="findRide.php">
-            <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            Find a ride
-            </a>
-        </div>
-        <div class="auth-footer">
-            <a class="snav-item" href="postRide.php">
-            <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-            Post a trip
-            </a>
-        </div>
-        <div class="auth-footer">
-            <a class="snav-item active" href="myTrip.php">
-            <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            Edit my trip
-            </a>
-        </div>
-        <div class="auth-footer">
-            <a class="snav-item" href="viewbookings.php">
-            <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
-            View bookings
-            </a>
-        </div>
-        <div class="auth-footer">
-            <a class="snav-item" href="myBookings.php">
-            <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-            My bookings
-            </a>
-        </div>
-      </nav>
-    </aside>
+    <div class="sidebar-section-label">Panel</div>
+        <nav class="sidebar-nav"> 
+            <div class="auth-footer">
+              <a class="snav-item active" href="findRide.php">
+                <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                Find a ride
+              </a>
+            </div>
+            <div class="auth-footer">
+              <a class="snav-item" href="postRide.php">
+              <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+              Post a trip
+              </a>
+            </div>
+            <div class="auth-footer">
+              <a class="snav-item " href="myTrip.php">
+              <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Edit my trip
+              </a>
+            </div>
+            <div class="auth-footer">
+              <a class="snav-item" href="viewbookings.php">
+              <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+              View bookings
+              </a>
+            </div>
+            <div class="auth-footer">
+              <a class="snav-item" href="myBookings.php">
+                <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                My bookings
+              </a>
+            </div>
+          
+        </nav>
+      
+  </aside>
 
     <!-- ═══ CONTENT ═══ -->
     <main class="panel-area">
@@ -308,14 +220,21 @@ $user = $stmt->fetch();
               <div class="ride-footer">
                 <div class="driver-info">
                   <div class="avatar" style="background:<?= $color ?>"><?= $initials ?></div>
-                  <div>
-                    <div class="driver-name"><?= htmlspecialchars($ride['driver_name']) ?></div>
-                    <div class="driver-rating" style="font-size:0.85rem;color:var(--text-light);margin-top:3px;">
-                      <?= $ride['driver_rating_count'] > 0 ? sprintf('%.1f ★ (%d)', $ride['driver_rating'], $ride['driver_rating_count']) : 'Aucune note encore' ?>
+                    <div>
+                      <div class="driver-name"><?= htmlspecialchars($ride['driver_name']) ?></div>
+                        <div class="driver-rating" style="font-size:0.85rem;color:var(--text-light);margin-top:3px;">
+                          <?php
+                            $rating = $avisModel->getAverage($ride['driver_id']);
+                          ?>
+                        
+                          <div class="driver-rating" style="font-size:0.85rem;color:var(--text-light);margin-top:3px;">
+                            <?= ($rating && $rating['total'] > 0) ? sprintf('%.1f ★ (%d)', $rating['avg_rating'], $rating['total']): 'Aucune note encore' ?>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <div class="seats">
+                    <div class="seats">
+                  
                   <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/></svg>
                   <?= (int)$ride['seats'] ?> seat<?= $ride['seats'] > 1 ? 's' : '' ?> left
                 </div>

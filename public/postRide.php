@@ -1,16 +1,18 @@
 <?php
 session_start();
 require '../config/db.php';
+require '../models/User.php';
+require '../models/Ride.php';
 
-// Get user info
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$user = $stmt->fetch();
+$userModel = new User($pdo);
+$rideModel = new Ride($pdo);
+
+$user = $userModel->findById($_SESSION['user_id']);
 if (!$user) {
     header("Location: login.php");
     exit();
 }
-// Handle form submission
+
 $success = false;
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $departure = $_POST['departure'];
@@ -21,11 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $price = $_POST['price'];
     $notes = $_POST['notes'];
 
-    $stmt = $pdo->prepare("INSERT INTO rides (driver_id, departure, destination, date, departure_time, seats, price, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    $stmt->execute([$_SESSION['user_id'], $departure, $destination, $date, $departure_time, $seats, $price, $notes]);
-
-    $success = true;
-    
+    if ($rideModel->create($_SESSION['user_id'], $departure, $destination, $date, $departure_time, $seats, $price, $notes)) {
+        $success = true;
+    }
+    else {
+        $error = "Failed to create ride. Please try again.";
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -88,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <a class="snav-item" href="viewbookings.php">
             <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
             View bookings
-            <span class="badge">3</span>
+            
             </a>
         </div>
         <div class="auth-footer">
@@ -115,8 +118,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <div class="form-grid">
                         <div class="field-group"><label>Departure city</label><input type="text" name="departure" placeholder="e.g. San Francisco, CA" required></div>
                         <div class="field-group"><label>Destination</label><input type="text" name="destination" placeholder="e.g. Los Angeles, CA" required></div>
-                        <div class="field-group"><label>Date</label><input type="date" name="date" required></div>
-                        <div class="field-group"><label>Departure time</label><input type="time" name="departure_time" value="08:00" required></div>
+                        <div class="field-group"><label>Date</label><input type="date" name="date" min="<?= date('Y-m-d') ?>" required></div>
+                        <div class="field-group"><label>Departure time</label><input type="time" name="departure_time"  value="08:00" required></div>
                         <div class="field-group"><label>Available seats</label><input type="number" name="seats" min="1" max="7" value="3" required></div>
                         <div class="field-group"><label>Price per seat ($)</label><input type="number" name="price" min="1" value="25" required></div>
                     </div>

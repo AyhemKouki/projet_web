@@ -1,6 +1,9 @@
 <?php
 session_start();
+
 require '../config/db.php';
+require '../models/User.php';
+require '../models/Ride.php';
 
 // Redirect if not logged in
 if (!isset($_SESSION['user_id'])) {
@@ -8,19 +11,18 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+$userModel = new User($pdo);
+$rideModel = new Ride($pdo);
+
 // Get user info
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$user = $stmt->fetch();
+$user = $userModel->findById($_SESSION['user_id']);
 if (!$user) {
     header("Location: login.php");
     exit();
 }
 
 // Get user's rides
-$stmt = $pdo->prepare("SELECT * FROM rides WHERE driver_id = ? ORDER BY date DESC");
-$stmt->execute([$_SESSION['user_id']]);
-$rides = $stmt->fetchAll();
+$rides = $rideModel->getByDriver($_SESSION['user_id']);
 
 // Handle form submission for update
 $success = false;
@@ -33,26 +35,28 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update'])) {
     $seats = $_POST['seats'];
     $price = $_POST['price'];
 
-    $stmt = $pdo->prepare("UPDATE rides SET departure = ?, destination = ?, date = ?, departure_time = ?, seats = ?, price = ? WHERE id = ? AND driver_id = ?");
-    $stmt->execute([$departure, $destination, $date, $departure_time, $seats, $price, $ride_id, $_SESSION['user_id']]);
+    $success = $rideModel->update(
+        $ride_id,
+        $_SESSION['user_id'],
+        $departure,
+        $destination,
+        $date,
+        $departure_time,
+        $seats,
+        $price
+    );
 
-    $success = true;
     // Refresh rides
-    $stmt = $pdo->prepare("SELECT * FROM rides WHERE driver_id = ? ORDER BY date DESC");
-    $stmt->execute([$_SESSION['user_id']]);
-    $rides = $stmt->fetchAll();
+    $rides = $rideModel->getByDriver($_SESSION['user_id']);
 }
 
 // Handle delete
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete'])) {
     $ride_id = $_POST['delete'];
-    $stmt = $pdo->prepare("DELETE FROM rides WHERE id = ? AND driver_id = ?");
-    $stmt->execute([$ride_id, $_SESSION['user_id']]);
+    $rideModel->delete($ride_id, $_SESSION['user_id']);
 
     // Refresh rides
-    $stmt = $pdo->prepare("SELECT * FROM rides WHERE driver_id = ? ORDER BY date DESC");
-    $stmt->execute([$_SESSION['user_id']]);
-    $rides = $stmt->fetchAll();
+    $rides = $rideModel->getByDriver($_SESSION['user_id']);
 }
 ?>
 <!DOCTYPE html>
@@ -115,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete'])) {
             <a class="snav-item" href="viewbookings.php">
             <svg viewBox="0 0 24 24" stroke-width="2" fill="none" stroke-linecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
             View bookings
-            <span class="badge">3</span>
+            
             </a>
         </div>
         <div class="auth-footer">
@@ -167,8 +171,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete'])) {
                       <div class="form-grid">
                         <div class="field-group"><label>Departure city</label><input type="text" name="departure" value="<?= htmlspecialchars($ride['departure']) ?>" required></div>
                         <div class="field-group"><label>Destination</label><input type="text" name="destination" value="<?= htmlspecialchars($ride['destination']) ?>" required></div>
-                        <div class="field-group"><label>Date</label><input type="date" name="date" value="<?= $ride['date'] ?>" required></div>
-                        <div class="field-group"><label>Departure time</label><input type="time" name="departure_time" value="<?= $ride['departure_time'] ?>" required></div>
+                        <div class="field-group"><label>Date</label><input type="date" name="date" min="<?= date('Y-m-d') ?>" value="<?= $ride['date'] ?>" required></div>
+                        <div class="field-group"><label>Departure time</label><input type="time" name="departure_time" min="<?= date('H:i', strtotime($ride['departure_time'])) ?>" value="<?= $ride['departure_time'] ?>" required></div>
                         <div class="field-group"><label>Available seats</label><input type="number" name="seats" min="1" max="7" value="<?= $ride['seats'] ?>" required></div>
                         <div class="field-group"><label>Price per seat ($)</label><input type="number" name="price" min="1" value="<?= $ride['price'] ?>" required></div>
                       </div>

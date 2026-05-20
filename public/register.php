@@ -1,7 +1,9 @@
 <?php
+session_start();
 require '../config/db.php';
+require '../models/User.php';
 
-$message = "";
+$error = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
@@ -10,43 +12,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $phone = trim($_POST['phone'] ?? '');
     $password = $_POST['password'];
 
-    // Create phone column if it does not yet exist on existing DB
-    try {
-        $columns = $pdo->query("PRAGMA table_info(users)")->fetchAll();
-        $hasPhone = false;
-        foreach ($columns as $column) {
-            if ($column['name'] === 'phone') {
-                $hasPhone = true;
-                break;
-            }
-        }
-        if (!$hasPhone) {
-            $pdo->exec("ALTER TABLE users ADD COLUMN phone TEXT");
-        }
-    } catch (Exception $e) {
-        // ignore if migration fails
-    }
+    $userModel = new User($pdo);
 
-    if ($name && $email && $password && $phone) {
-
-        $check = $pdo->prepare("SELECT id FROM users WHERE email = ?");
-        $check->execute([$email]);
-
-        if ($check->fetch()) {
-            $message = "Email already exists!";
-        } else {
-            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-
-            $stmt = $pdo->prepare("INSERT INTO users (name, email, password, phone) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$name, $email, $hashedPassword, $phone]);
-
-            $message = "User registered successfully!";
-            header("Location: ../public/login.php");
-            exit();
-        }
-
-    } else {
-        $message = "Please fill all fields.";
+    if ($userModel->findByEmail($email)) {
+        $error = "Email already exists!";
+    } 
+    else {
+        $userModel->create($name, $email, $password, $phone);
+        header("Location: ../public/login.php");
+        exit();
     }
 }
 ?>
@@ -116,8 +90,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   </form>
 
   <!-- message PHP -->
-  <?php if (!empty($message)) echo "<p style='margin-top:10px;color:var(--teal);'>$message</p>"; ?>
-
+  <?php if (!empty($error)) : ?>
+    <div class="error-msg">
+      <?= htmlspecialchars($error) ?>
+    </div>
+  <?php endif; ?>
   <div class="auth-footer">
     Already have an account?
     <a href="login.php">Log in</a>

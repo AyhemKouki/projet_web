@@ -1,29 +1,31 @@
 <?php
-// Démarrer la session
 session_start();
-// Connexion à la base de données
 require '../config/db.php';
+require '../models/User.php';
+
+$error = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    //Récupérer les données
-    $email = $_POST['email'];
+
+    $email = trim($_POST['email']);
     $password = $_POST['password'];
 
-    //Chercher l’utilisateur
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE email = ?");
-    $stmt->execute([$email]);
-    $user = $stmt->fetch();
-
+    $userModel = new User($pdo);
+    $user = $userModel->findByEmail($email);
+  
     if ($user && password_verify($password, $user['password'])) {
+
         $_SESSION['user_id'] = $user['id'];
+        $_SESSION['user_name'] = $user['name'];
+
         header("Location: ../public/findRide.php");
         exit();
+
     } else {
-        echo "Invalid credentials";
+        $error = "Invalid email or password";
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -61,16 +63,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
       <form method="POST">
         <div class="field-group">
             <label>Email</label>
-            <input name="email" type="email" placeholder="you@example.com">
+            <input name="email" type="email" placeholder="you@example.com" required>
         </div>
         <div class="field-group">
             <label>Password</label>
-            <input name="password" type="password" placeholder="••••••••" value="demo1234">
+            <input name="password" type="password" required>
         </div>
-
         <button class="btn-full" type="submit">Log in</button>
       </form>
-
+      <?php if (!empty($error)) : ?>
+        <div class="error-msg">
+          <?= $error ?>
+        </div>
+      <?php endif; ?>
       <div class="auth-footer">
         New here? <a href="register.php">Create an account</a>
       </div>

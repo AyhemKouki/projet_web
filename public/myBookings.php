@@ -1,103 +1,52 @@
 <?php
 session_start();
 require '../config/db.php';
+require '../models/Booking.php';
+require '../models/User.php';
+require '../models/Avis.php';
 
 // Redirect if not logged in
 if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
+  header("Location: login.php");
+  exit();
 }
 
 $user_id = $_SESSION['user_id'];
+$bookingModel = new Booking($pdo);
+$userModel = new User($pdo);
 $success = "";
 $error = "";
 
-// Ensure bookings table has seats and rating columns
-try {
-    $bookingColumns = [];
-    $colStmt = $pdo->query("PRAGMA table_info(bookings)");
-    foreach ($colStmt->fetchAll() as $column) {
-        $bookingColumns[] = $column['name'];
-    }
-    if (!in_array('seats', $bookingColumns, true)) {
-        $pdo->exec("ALTER TABLE bookings ADD COLUMN seats INTEGER DEFAULT 1");
-    }
-    if (!in_array('rating', $bookingColumns, true)) {
-        $pdo->exec("ALTER TABLE bookings ADD COLUMN rating INTEGER DEFAULT NULL");
-    }
-} catch (Exception $e) {
-    // ignore schema update problems
-}
 
-// Handle booking cancellation and rating updates
+// Handle actions via Booking model
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['cancel_booking_id'])) {
-        $cancelBookingId = (int) $_POST['cancel_booking_id'];
-        $stmt = $pdo->prepare("SELECT b.id, b.ride_id, COALESCE(b.seats, 1) AS booked_seats FROM bookings b WHERE b.id = ? AND b.user_id = ?");
-        $stmt->execute([$cancelBookingId, $user_id]);
-        $bookingToCancel = $stmt->fetch();
-
-        if ($bookingToCancel) {
-            $pdo->prepare("DELETE FROM bookings WHERE id = ? AND user_id = ?")->execute([$cancelBookingId, $user_id]);
-            $pdo->prepare("UPDATE rides SET seats = seats + ? WHERE id = ?")->execute([$bookingToCancel['booked_seats'], $bookingToCancel['ride_id']]);
-            $success = "Réservation annulée avec succès.";
-        } else {
-            $error = "Impossible d'annuler cette réservation.";
-        }
-    } elseif (isset($_POST['rate_booking_id'])) {
-        $rateBookingId = (int) $_POST['rate_booking_id'];
-        $rating = (int) ($_POST['rating'] ?? 0);
-        if ($rating < 1 || $rating > 5) {
-            $error = "La note doit être entre 1 et 5 étoiles.";
-        } else {
-            $stmt = $pdo->prepare("SELECT id FROM bookings WHERE id = ? AND user_id = ?");
-            $stmt->execute([$rateBookingId, $user_id]);
-            $bookingToRate = $stmt->fetch();
-            if ($bookingToRate) {
-                $pdo->prepare("UPDATE bookings SET rating = ? WHERE id = ? AND user_id = ?")->execute([$rating, $rateBookingId, $user_id]);
-                $success = "Merci pour votre note !";
-            } else {
-                $error = "Impossible de noter cette réservation.";
-            }
-        }
+  if (!empty($_POST['cancel_booking_id'])) {
+    $res = $bookingModel->cancel((int) $_POST['cancel_booking_id'], $user_id);
+    if (!empty($res['success'])) {
+      $success = $res['message'] ?? "Réservation annulée avec succès.";
+    } else {
+      $error = $res['error'] ?? "Impossible d'annuler cette réservation.";
     }
+  } elseif (!empty($_POST['rate_booking_id'])) {
+    $rating = (int) ($_POST['rating'] ?? 0);
+    $res = $bookingModel->rate((int) $_POST['rate_booking_id'], $rating, $user_id);
+    if (!empty($res['success'])) {
+      $success = $res['message'] ?? "Merci pour votre note !";
+    } else {
+      $error = $res['error'] ?? "Impossible de noter cette réservation.";
+    }
+  }
 }
 
-// ─── RÉCUPÉRER LES RÉSERVATIONS DE L'UTILISATEUR ──────────────────────────────────
-$bookings = [];
-
+// Load data for the view
 try {
-    // Récupérer toutes les réservations de l'utilisateur avec les détails du trajet et du conducteur
-    $stmt = $pdo->prepare("
-        SELECT
-            b.id as booking_id,
-            b.created_at as booking_date,
-            COALESCE(b.seats, 1) AS booked_seats,
-            b.rating as booking_rating,
-            r.id as ride_id,
-            r.departure,
-            r.destination,
-            r.date,
-            r.departure_time,
-            r.price,
-            u.name as driver_name,
-            u.email as driver_email
-        FROM bookings b
-        JOIN rides r ON b.ride_id = r.id
-        JOIN users u ON u.id = r.driver_id
-        WHERE b.user_id = ?
-        ORDER BY r.date DESC, b.created_at DESC
-    ");
-    $stmt->execute([$user_id]);
-    $bookings = $stmt->fetchAll();
+  $bookings = $bookingModel->getUserBookings($user_id);
 } catch (Exception $e) {
-    $error = "Erreur lors de la récupération des réservations: " . $e->getMessage();
+  $bookings = [];
+  $error = "Erreur lors de la récupération des réservations: " . $e->getMessage();
 }
 
-// ─── INFO UTILISATEUR ─────────────────────────────────────────────────────────
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$user_id]);
-$user = $stmt->fetch();
+$user = $userModel->findById($user_id);
 ?>
 <!DOCTYPE html>
 <html>
