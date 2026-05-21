@@ -36,4 +36,41 @@ class User
         return $stmt->execute([$name, $email, $hashedPassword, $phone]);
     }
 
+    // Récupérer tous les utilisateurs (admin)
+    public function getAll()
+    {
+        $sql = "SELECT id, name, email, phone FROM users ORDER BY name ASC";
+        $stmt = $this->pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // Supprimer un utilisateur par ID (admin)
+    public function deleteById($id)
+    {
+        $sql = "DELETE FROM users WHERE id = ?";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([$id]);
+    }
+
+    // Compter le nombre total d'utilisateurs (admin)
+    public function countAll()
+    {
+        return (int) $this->pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+    }
+
+    // Mettre à jour le profil de l'utilisateur
+    public function updateProfile($id, $name, $email, $phone, $password = null)
+    {
+        if (!empty($password)) {
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+            $sql = "UPDATE users SET name = ?, email = ?, phone = ?, password = ? WHERE id = ?";
+            $stmt = $this->pdo->prepare($sql);
+            return $stmt->execute([$name, $email, $phone, $hashedPassword, $id]);
+        } else {
+            $sql = "UPDATE users SET name = ?, email = ?, phone = ? WHERE id = ?";
+            $stmt = $this->pdo->prepare($sql);
+            return $stmt->execute([$name, $email, $phone, $id]);
+        }
+    }
+
 }

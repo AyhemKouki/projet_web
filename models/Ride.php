@@ -76,5 +76,46 @@ class Ride
 
         return $rides;
     }
+
+    // Récupérer tous les trajets avec le nom du conducteur (admin)
+    public function getAll()
+    {
+        $sql = "
+            SELECT r.id, r.departure, r.destination, r.date, r.departure_time, r.seats, r.price,
+                   u.name AS driver_name
+            FROM rides r
+            JOIN users u ON u.id = r.driver_id
+            ORDER BY r.date DESC
+        ";
+        return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    // Supprimer un trajet par ID sans vérifier le conducteur (admin)
+    public function deleteByIdAdmin($ride_id)
+    {
+        $sql = "DELETE FROM rides WHERE id = ?";
+        $stmt = $this->pdo->prepare($sql);
+        return $stmt->execute([$ride_id]);
+    }
+
+    // Compter le nombre total de trajets (admin)
+    public function countAll()
+    {
+        return (int) $this->pdo->query("SELECT COUNT(*) FROM rides")->fetchColumn();
+    }
+
+    // Récupérer les N derniers trajets (admin dashboard)
+    public function getLatest($limit = 5)
+    {
+        $sql = "
+            SELECT r.id, r.departure, r.destination, r.date, r.departure_time, r.seats, r.price,
+                   u.name AS driver_name
+            FROM rides r
+            JOIN users u ON u.id = r.driver_id
+            ORDER BY r.date DESC
+            LIMIT " . intval($limit) . "
+        ";
+        return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    }
     
 }

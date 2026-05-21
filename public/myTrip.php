@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete'])) {
     <!-- ═══ LEFT SIDEBAR (Driver) ═══ -->
     <aside class="driver-sidebar">
       <div class="sidebar-header">
-        <div class="sidebar-avatar">
+        <div class="sidebar-avatar" onclick="window.location.href='editProfile.php'">
             <?= strtoupper(substr($user['name'], 0, 2)) ?>
         </div>
         <div>

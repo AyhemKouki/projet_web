@@ -211,4 +211,10 @@ class Booking
             'message' => "Merci pour votre note !"
         ];
     }
+
+    // Compter le nombre total de réservations (admin)
+    public function countAll()
+    {
+        return (int) $this->pdo->query("SELECT COUNT(*) FROM bookings")->fetchColumn();
+    }
 }

@@ -42,4 +42,23 @@ class Avis
         $stmt = $this->pdo->prepare("UPDATE avis SET rating = ?, created_at = NOW() WHERE user_id = ? AND driver_id = ?");
         return $stmt->execute([$rating, $user_id, $driver_id]);
     }
+
+    // Compter le nombre total d'avis (admin)
+    public function countAll() {
+        return (int) $this->pdo->query("SELECT COUNT(*) FROM avis")->fetchColumn();
+    }
+
+    // Récupérer tous les avis avec noms (admin)
+    public function getAll() {
+        $sql = "
+            SELECT a.id, a.rating, a.created_at,
+                   u.name AS user_name,
+                   d.name AS driver_name
+            FROM avis a
+            JOIN users u ON u.id = a.user_id
+            JOIN users d ON d.id = a.driver_id
+            ORDER BY a.created_at DESC
+        ";
+        return $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+    }
 }
